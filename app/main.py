@@ -1,4 +1,5 @@
 import logging
+import re
 from datetime import datetime
 
 import pytesseract
@@ -44,7 +45,7 @@ async def fetch_att(username, pwd, max_retries=3) -> ScrapeResponse:
 
         page = await browser.new_page()
         login_url = (
-            "https://erp.vistas.ac.in/velsonline/students/loginManager/youLogin.jsp"
+            "http://184.95.52.42/velsonline/students/loginManager/youLogin.jsp"
         )
         await page.goto(login_url)
 
@@ -72,7 +73,7 @@ async def fetch_att(username, pwd, max_retries=3) -> ScrapeResponse:
 
             left_menu = page.frame_locator('frame[name="menu"]')
             student_name = await left_menu.locator(
-                "#frmPageLeft > table > tbody > tr:nth-child(2) > td > b"
+                "#frmPageLeft > table > tbody > tr:nth-child(2) > td > b:nth-child(3)"
             ).text_content()
             if student_name is None:
                 raise Exception("Student name not found")
@@ -87,7 +88,7 @@ async def fetch_att(username, pwd, max_retries=3) -> ScrapeResponse:
             rows = await att_frame.locator("#tblSubjectWiseAttendance > tbody tr").all()
             for i, row in enumerate(rows):
                 # skip first 3 and last row (total percent)
-                if i <= 3 or i == len(rows) - 1:
+                if i < 3 or i == len(rows) - 1:
                     continue
 
                 cells = await row.locator("td").all_text_contents()
@@ -99,17 +100,14 @@ async def fetch_att(username, pwd, max_retries=3) -> ScrapeResponse:
                 subjects.append(subject)
 
             # fetch percent and last_updated
-            percent_str = await att_frame.locator(
-                "#tblSubjectWiseAttendance > tbody > tr.subtotal > td:nth-child(5)"
-            ).text_content()
+            percent_str = await att_frame.locator("#tblSubjectWiseAttendance > tbody > tr.subtotal > td:nth-child(5)").inner_text()
             if percent_str is None:
                 raise Exception("Can't find percent")
             percent = float(percent_str.strip()[:-1])
 
-            # percent = float(percent_str.strip()[:-1])
-            last_updated_str = await att_frame.locator(
-                "#tblSubjectWiseAttendance tr.subheader1 td:nth-child(4)"
-            ).inner_text()
+            last_updated_str = await att_frame.get_by_text(re.compile("During the Period.*")).inner_text()
+            last_updated_str = last_updated_str.split("\xa0\xa0\xa0")
+            last_updated_str = last_updated_str[-1]
             last_updated = datetime.strptime(last_updated_str, "%d/%b/%Y")
 
             await page.close()
